@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secure QR Generator — Playfair Cipher</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"></script>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="badge">🔐 INFORMATION SECURITY — LAB PROJECT</div>
+    <h1>Secure QR Code <span>Generator</span></h1>
+    <p>Playfair Cipher · Python Flask Backend · COMSATS University Islamabad · Muhammad Taimoor</p>
+  </header>
+
+  <!-- SECTION 1: ENCRYPT -->
+  <div class="section-title">
+    <div class="section-num">1</div>
+    <h2>Encrypt Message &amp; Generate QR Codes</h2>
+  </div>
+
+  <div class="card">
+    <div class="input-row">
+      <div class="input-group">
+        <label>YOUR MESSAGE</label>
+        <textarea id="plainMsg" placeholder="Type your secret message here..."></textarea>
+      </div>
+      <div class="input-group">
+        <label>SECRET KEYWORD</label>
+        <input type="text" id="keyword" placeholder="e.g. MONARCHY" maxlength="25"
+               oninput="onKeywordInput(this.value)">
+
+        <!-- Strength Bar -->
+        <div class="strength-wrap" id="strengthWrap">
+          <div class="strength-label">KEYWORD STRENGTH</div>
+          <div class="strength-bar-bg">
+            <div class="strength-bar-fill" id="strengthBar"></div>
+          </div>
+          <div class="strength-text" id="strengthText"></div>
+        </div>
+
+        <!-- Live Grid -->
+        <div class="grid-wrap" id="gridWrap">
+          <div class="grid-label" style="margin-top:12px;">5×5 PLAYFAIR GRID</div>
+          <div class="cipher-grid" id="cipherGrid"></div>
+        </div>
+      </div>
+    </div>
+    <button class="btn btn-cyan" onclick="handleEncrypt()">
+      🔒 &nbsp; Encrypt &amp; Generate QR Codes
+    </button>
+  </div>
+
+  <!-- Encrypt Results -->
+  <div id="encryptResult" class="hidden">
+    <div class="result-label-row">
+      <label>ENCRYPTED CIPHERTEXT</label>
+      <button class="copy-btn" onclick="copyText()">COPY</button>
+    </div>
+    <div class="result-box" id="cipherOut"></div>
+
+    <!-- Steps breakdown -->
+    <div class="steps-wrap" id="stepsWrap">
+      <button class="steps-toggle" onclick="toggleSteps()">
+        📋 &nbsp; Show Encryption Steps
+      </button>
+      <div class="steps-table-wrap" id="stepsTableWrap">
+        <table class="steps-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>PAIR</th>
+              <th>ENCRYPTED</th>
+              <th>RULE APPLIED</th>
+            </tr>
+          </thead>
+          <tbody id="stepsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- QR Codes -->
+    <div class="qr-row">
+      <div class="qr-box secure">
+        <div class="qr-type">🔒</div>
+        <div class="qr-title">SECURE QR CODE</div>
+        <div class="qr-canvas-wrap" id="secureQR"></div>
+        <div class="qr-caption">Contains <strong>encrypted</strong> text.<br>Scanning shows gibberish.</div>
+        <div class="scan-pill">SCAN → GIBBERISH</div>
+        <div class="qr-btn-row">
+          <button class="btn btn-outline btn-sm"
+                  onclick="downloadQR('secureQR','secure-qr')">⬇ Download</button>
+        </div>
+      </div>
+      <div class="qr-box unsecure">
+        <div class="qr-type">🔓</div>
+        <div class="qr-title">UNSECURE QR CODE</div>
+        <div class="qr-canvas-wrap" id="unsecureQR"></div>
+        <div class="qr-caption">Contains <strong>original</strong> text.<br>Scanning reveals everything.</div>
+        <div class="scan-pill">SCAN → REAL MESSAGE</div>
+        <div class="qr-btn-row">
+          <button class="btn btn-outline btn-sm"
+                  onclick="downloadQR('unsecureQR','unsecure-qr')">⬇ Download</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-banner">
+      💡 &nbsp; Scan both QR codes with your phone to see the difference.
+      Blue QR → encrypted gibberish. Red QR → real message exposed.
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- SECTION 2: SCANNER -->
+  <div class="section-title">
+    <div class="section-num">2</div>
+    <h2>Scan QR Code with Camera</h2>
+  </div>
+
+  <div class="scanner-card">
+    <p style="color:var(--muted);font-size:14px;margin-bottom:16px;">
+      Point your camera at the Secure QR code. Scanned ciphertext will be
+      auto-filled into the decrypt section below.
+    </p>
+    <button class="btn btn-cyan btn-sm" style="width:auto;padding:10px 24px;"
+            onclick="startScanner()" id="startScanBtn">
+      📷 &nbsp; Start Camera Scanner
+    </button>
+    <button class="btn btn-outline btn-sm" style="margin-left:10px;margin-top:0;display:none;"
+            onclick="stopScanner()" id="stopScanBtn">
+      ✕ Stop
+    </button>
+    <div id="scanner-video-wrap">
+      <video id="scanner-video" playsinline autoplay muted></video>
+      <div class="scanner-overlay">
+        <div class="scanner-frame"></div>
+      </div>
+    </div>
+    <canvas id="scanner-canvas" style="display:none;"></canvas>
+    <div id="scanner-result-box"></div>
+  </div>
+
+  <hr>
+
+  <!-- SECTION 3: DECRYPT -->
+  <div class="section-title">
+    <div class="section-num">3</div>
+    <h2>Decrypt Ciphertext Back to Original</h2>
+  </div>
+
+  <div class="card">
+    <div class="input-row">
+      <div class="input-group">
+        <label>CIPHERTEXT (paste or scan above)</label>
+        <textarea id="cipherIn"
+                  placeholder="Paste encrypted ciphertext here..."></textarea>
+      </div>
+      <div class="input-group">
+        <label>SECRET KEYWORD (same as used to encrypt)</label>
+        <input type="text" id="decKeyword"
+               placeholder="e.g. MONARCHY" maxlength="25">
+      </div>
+    </div>
+    <button class="btn btn-gold" onclick="handleDecrypt()">
+      🔑 &nbsp; Decrypt Message
+    </button>
+  </div>
+
+  <div id="decryptResult" class="hidden">
+    <label>DECRYPTED MESSAGE</label>
+    <div class="result-box green" id="decryptOut"></div>
+  </div>
+
+  <hr>
+
+  <footer>
+    Python Flask Backend &nbsp;·&nbsp; <span>Playfair Cipher</span> &nbsp;·&nbsp;
+    Information Security Lab &nbsp;·&nbsp;
+    <span>COMSATS University Islamabad</span>
+  </footer>
+
+</div>
+
+<script src="/static/qr.js"></script>
+<script src="/static/scanner.js"></script>
+<script>
+
+// ── Keyword input → call Python API for grid + strength ──
+let gridTimer = null;
+function onKeywordInput(keyword) {
+  clearTimeout(gridTimer);
+  if (!keyword.trim()) {
+    document.getElementById("gridWrap").style.display     = "none";
+    document.getElementById("strengthWrap").style.display = "none";
+    return;
+  }
+  // Small delay so we don't call API on every single keystroke
+  gridTimer = setTimeout(() => fetchGridAndStrength(keyword), 300);
+}
+
+async function fetchGridAndStrength(keyword) {
+  const res  = await fetch("/api/grid", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ keyword })
+  });
+  const data = await res.json();
+  renderGrid(keyword, data.grid);
+  renderStrength(data.strength);
+}
+
+function renderGrid(keyword, grid) {
+  const wrap   = document.getElementById("gridWrap");
+  const gridEl = document.getElementById("cipherGrid");
+
+  // Find keyword letters
+  let seen = new Set(), kwSet = new Set();
+  for (let c of keyword.toUpperCase().replace(/J/g,"I").replace(/[^A-Z]/g,"")) {
+    if (!seen.has(c)) { seen.add(c); kwSet.add(c); }
+  }
+
+  gridEl.innerHTML = "";
+  grid.flat().forEach(letter => {
+    const cell = document.createElement("div");
+    cell.className = "grid-cell" + (kwSet.has(letter) ? " kw" : "");
+    cell.textContent = letter;
+    gridEl.appendChild(cell);
+  });
+  wrap.style.display = "block";
+}
+
+function renderStrength(score) {
+  const wrap = document.getElementById("strengthWrap");
+  const bar  = document.getElementById("strengthBar");
+  const text = document.getElementById("strengthText");
+  wrap.style.display = "block";
+  const pct = Math.round((score / 6) * 100);
+  bar.style.width = pct + "%";
+  if (score <= 1) {
+    bar.style.background = "#e74c3c";
+    text.style.color     = "#e74c3c";
+    text.textContent     = "Weak — use a longer keyword";
+  } else if (score <= 3) {
+    bar.style.background = "#f4a261";
+    text.style.color     = "#f4a261";
+    text.textContent     = "Moderate — add more unique letters";
+  } else if (score <= 5) {
+    bar.style.background = "#2ecc71";
+    text.style.color     = "#2ecc71";
+    text.textContent     = "Strong";
+  } else {
+    bar.style.background = "#00B4D8";
+    text.style.color     = "#00B4D8";
+    text.textContent     = "Very Strong 🔐";
+  }
+}
+
+// ── Encrypt → call Python API ──
+async function handleEncrypt() {
+  const msg = document.getElementById("plainMsg").value.trim();
+  const kw  = document.getElementById("keyword").value.trim();
+  if (!msg) { alert("Please enter a message."); return; }
+  if (!kw)  { alert("Please enter a keyword."); return; }
+
+  const res  = await fetch("/api/encrypt", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ message: msg, keyword: kw })
+  });
+  const data = await res.json();
+
+  if (data.error) { alert(data.error); return; }
+
+  // Show ciphertext
+  document.getElementById("cipherOut").textContent = data.cipher;
+
+  // Build steps table from Python response
+  buildStepsTable(data.steps);
+  document.getElementById("stepsWrap").style.display      = "block";
+  document.getElementById("stepsTableWrap").style.display = "none";
+  document.querySelector(".steps-toggle").textContent     = "📋  Show Encryption Steps";
+
+  // Generate QR codes in browser
+  generateQR("secureQR",   data.cipher,                            "#0077B6");
+  generateQR("unsecureQR", msg.toUpperCase().replace(/[^A-Z]/g,""), "#c0392b");
+
+  // Auto-fill decrypt
+  document.getElementById("cipherIn").value   = data.cipher;
+  document.getElementById("decKeyword").value = kw;
+
+  showSection("encryptResult");
+  document.getElementById("decryptResult").classList.add("hidden");
+}
+
+// ── Decrypt → call Python API ──
+async function handleDecrypt() {
+  const cipher = document.getElementById("cipherIn").value.trim();
+  const kw     = document.getElementById("decKeyword").value.trim();
+  if (!cipher) { alert("Please paste the ciphertext."); return; }
+  if (!kw)     { alert("Please enter the keyword."); return; }
+
+  const res  = await fetch("/api/decrypt", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ cipher, keyword: kw })
+  });
+  const data = await res.json();
+
+  if (data.error) { alert(data.error); return; }
+
+  document.getElementById("decryptOut").textContent = data.plain;
+  showSection("decryptResult");
+}
+
+// ── Build steps table ──
+function buildStepsTable(steps) {
+  const tbody = document.getElementById("stepsBody");
+  tbody.innerHTML = "";
+  steps.forEach((s, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td style="color:var(--muted)">${i + 1}</td>
+      <td class="pair-cell">${s.pair}</td>
+      <td class="enc-cell">${s.encrypted}</td>
+      <td class="rule-cell">${s.rule}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function toggleSteps() {
+  const wrap = document.getElementById("stepsTableWrap");
+  const btn  = document.querySelector(".steps-toggle");
+  if (wrap.style.display === "none" || !wrap.style.display) {
+    wrap.style.display = "block";
+    btn.textContent    = "📋  Hide Encryption Steps";
+  } else {
+    wrap.style.display = "none";
+    btn.textContent    = "📋  Show Encryption Steps";
+  }
+}
+
+function copyText() {
+  const text = document.getElementById("cipherOut").textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector(".copy-btn");
+    btn.textContent = "COPIED!";
+    setTimeout(() => btn.textContent = "COPY", 1500);
+  });
+}
+
+function showSection(id) {
+  const el = document.getElementById(id);
+  el.classList.remove("hidden", "show");
+  void el.offsetWidth;
+  el.classList.add("show");
+}
+
+</script>
+</body>
+</html>
